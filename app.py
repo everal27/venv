@@ -14,3 +14,5 @@ numero_a = input("dame el primer numero: ")
 numero_b = input("dame el segundo numero: ")
 print(f"la suma es: {int(numero_a) + int(numero_b)}")
 print("adios mundo")
+
+print(f"la resta es: {int(numero_a) - int(numero_b)}")
