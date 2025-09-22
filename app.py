@@ -9,3 +9,8 @@ print(f"IP Address: {IPaddress}")
 
 for i in range(10):
      print(f"count {i}")
+     
+numero_a = input("dame el primer numero: ")
+numero_b = input("dame el segundo numero: ")
+print(f"la suma es: {int(numero_a) + int(numero_b)}")
+print("adios mundo")
