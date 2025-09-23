@@ -16,3 +16,5 @@ print(f"la suma es: {int(numero_a) + int(numero_b)}")
 print("adios mundo")
 
 print(f"la resta es: {int(numero_a) - int(numero_b)}")
+
+print(f"la multiplicacion es: {int(numero_a) * int(numero_b)}")
