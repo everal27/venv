@@ -2,10 +2,10 @@ import serial
 import time
 
 
-def configure_device(port, baurderate, com, hostname, username, password):
+def configure_device(port, baurderate, hostname, username, password):
     try:
         ser = serial.Serial(port, baurderate, timeout=1)
-        ser.write(f"{com}\r\n".encode())
+        ser.write(f"{port}\r\n".encode())
         time.sleep(1) 
         ser.write(f"eneale\r\n".encode())  
         time.sleep(1)
@@ -40,4 +40,5 @@ def configure_device(port, baurderate, com, hostname, username, password):
     except serial.SerialException as e:
         print(f"Error: {e}")
         
-R1 = configure_device("COM3", 9600, "R1", "cisco", "cisco", "simon.com")
+R1 = configure_device("COM5", 9600, "R1", "cisco", "cisco", "simon.com")
+
