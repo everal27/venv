@@ -1,6 +1,4 @@
 Serie,Port,Device,User,Password,Ip-domain,Modelo,Version
-FTX1537827U,COM5,Router1,cisco,cisco,cisco.local,C2901,15.1
-FTX1537828V,COM5,Router2,cisco,cisco,cisco.local,C2911,15.2
-FTX1537830X,COM5,Router3,cisco,cisco,cisco.local,C1941,12.4
-FTX1537831Y,COM5,Router4,cisco,cisco,cisco.local,C2811,15
-FTX1537832Z,COM5,Router5,cisco,cisco,cisco.local,C3925,15.3
+FJC2047A07M,COM11,Router1,cisco,cisco,cisco.local,,
+FTX1537828V,COM11,Router2,cisco,cisco,cisco.local,,
+

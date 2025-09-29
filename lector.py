@@ -2,120 +2,136 @@ import csv
 import serial
 import time
 import re
-
-# Regex para validar puerto y dominio
-REGEX_PORT = re.compile(r"^COM\d+$")
-REGEX_DOMAIN = re.compile(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-
-# Regex para extraer modelo y versión desde "show version"
-REGEX_VERSION = re.compile(r"Version\s+([\d.()A-Za-z]+)")
-REGEX_MODEL = re.compile(r"cisco\s+(\S+)\s+\(")
+import os
+from basic_config import configure_device
 
 # ==============================
-# Funciones
+# Regex
 # ==============================
+REGEX_VERSION = re.compile(r"Version\s*[:]*\s*([0-9A-Za-z\.\(\)\-_,]+)", re.IGNORECASE)
+REGEX_MODEL_PAREN = re.compile(r"\(([^)]+)\)\s*,\s*Version", re.IGNORECASE)
+REGEX_SERIAL = re.compile(r"(?:System serial number\s*:\s*|Processor board ID\s*)(\S+)", re.IGNORECASE)
+
+# ==============================
+# Funciones auxiliares
+# ==============================
+def read_until_idle(ser, idle_timeout=1.2, overall_timeout=10):
+    buf = bytearray()
+    start = time.time()
+    last = time.time()
+    while True:
+        chunk = ser.read(1024)
+        if chunk:
+            buf.extend(chunk)
+            last = time.time()
+            if b'--More--' in chunk:
+                ser.write(b' ')
+                time.sleep(0.2)
+        else:
+            if time.time() - last > idle_timeout: break
+            if time.time() - start > overall_timeout: break
+            time.sleep(0.05)
+    return buf.decode(errors="ignore")
+
+def send_command(ser, cmd, espera=0.3):
+    ser.write((cmd + "\r\n").encode())
+    time.sleep(espera)
+    return read_until_idle(ser)
+
+def extraer_datos(salida):
+    m_model = REGEX_MODEL_PAREN.search(salida)
+    modelo = m_model.group(1).strip() if m_model else "Desconocido"
+    m_ver = REGEX_VERSION.search(salida)
+    version = m_ver.group(1).strip() if m_ver else "Desconocida"
+    m_ser = REGEX_SERIAL.search(salida)
+    serial = m_ser.group(1).strip() if m_ser else "Desconocido"
+    return modelo, version, serial
+
 def conectar_router(port, baudrate=9600):
     try:
         ser = serial.Serial(port, baudrate, timeout=1)
-        print(f"✅ Conectado al puerto {port}")
         return ser
-    except serial.SerialException as e:
-        print(f"❌ Error al abrir {port}: {e}")
+    except Exception as e:
+        print(f"❌ No se pudo abrir {port}: {e}")
         return None
 
-def enviar_comando(ser, comando, espera=2):
-    ser.write(f"{comando}\r\n".encode())
-    time.sleep(espera)
-    salida = ser.read_all().decode(errors="ignore")
-    return salida
-
 # ==============================
-# Procesar CSV y generar resultados
+# Función principal
 # ==============================
 def procesar_csv(ruta_csv, ruta_resultados="routers_resultados.csv"):
+    if not os.path.exists(ruta_csv):
+        with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["Serie","Port","Device","User","Password","Ip-domain","Modelo","Version"])
+            writer.writeheader()
+
+    with open(ruta_csv, newline="", encoding="utf-8") as f:
+        lector = list(csv.DictReader(f))
+
     resultados = []
+    puertos = set(row["Port"] for row in lector if row.get("Port"))
 
-    try:
-        with open(ruta_csv, mode="r", newline="", encoding="utf-8") as archivo:
-            lector = csv.DictReader(archivo)
+    for port in puertos:
+        print(f"\n=== Escaneando {port} ===")
+        ser = conectar_router(port)
+        if not ser:
+            continue
 
-            for row in lector:
-                serie = row.get("Serie", "")
-                port = row.get("Port", "")
-                device = row.get("Device", "")
-                ip_domain = row.get("Ip-domain", "")
-                modelo_esperado = row.get("Modelo", "N/A")
-                version_esperada = row.get("Version", "N/A")
+        try:
+            send_command(ser, "terminal length 0")
+            salida = send_command(ser, "show version", espera=1.0)
+            modelo, version, serial_detectado = extraer_datos(salida)
 
-                print(f"\n🔹 Procesando router {device} ({serie})...")
+            print(f"🔎 Detectado en {port}: Serial={serial_detectado}, Modelo={modelo}, Versión={version}")
 
-                # Validaciones
-                if not REGEX_PORT.match(port):
-                    print(f"⚠ Puerto '{port}' inválido. Saltando router.")
+            fila = next((row for row in lector if row["Serie"] == serial_detectado and row["Port"] == port), None)
+
+            if fila:
+                # Validación estricta: Serial + Modelo + Versión
+                if fila.get("Modelo","") == modelo and fila.get("Version","") == version:
                     resultados.append({
-                        **row, "Modelo_detectado": "N/A", "Version_detectada": "N/A",
-                        "Modelo_coincide": "No", "Version_coincide": "No"
+                        **fila,
+                        "Modelo_detectado": modelo,
+                        "Version_detectada": version,
+                        "Serie_detectada": serial_detectado,
+                        "Modelo_coincide": "Sí",
+                        "Version_coincide": "Sí"
                     })
-                    continue
-
-                if not REGEX_DOMAIN.match(ip_domain):
-                    print(f"⚠ Dominio '{ip_domain}' inválido. Saltando router.")
-                    resultados.append({
-                        **row, "Modelo_detectado": "N/A", "Version_detectada": "N/A",
-                        "Modelo_coincide": "No", "Version_coincide": "No"
-                    })
-                    continue
-
-                # Conectar
-                ser = conectar_router(port)
-                if ser:
-                    salida = enviar_comando(ser, "show version")
-
-                    # Extraer modelo y versión detectados
-                    version_match = REGEX_VERSION.search(salida)
-                    model_match = REGEX_MODEL.search(salida)
-
-                    version_detectada = version_match.group(1) if version_match else "Desconocida"
-                    modelo_detectado = model_match.group(1) if model_match else "Desconocido"
-
-                    modelo_coincide = "Sí" if modelo_esperado == modelo_detectado else "No"
-                    version_coincide = "Sí" if version_esperada == version_detectada else "No"
-
-                    print(f"--- Resultado show version de {device} ---")
-                    print(f"Modelo esperado: {modelo_esperado} | Detectado: {modelo_detectado} | Coincide: {modelo_coincide}")
-                    print(f"Versión esperada: {version_esperada} | Detectada: {version_detectada} | Coincide: {version_coincide}")
-
-                    ser.close()
-                    print(f"🔌 Conexión con {device} cerrada")
-
-                    resultados.append({
-                        **row,
-                        "Modelo_detectado": modelo_detectado,
-                        "Version_detectada": version_detectada,
-                        "Modelo_coincide": modelo_coincide,
-                        "Version_coincide": version_coincide
-                    })
+                    print(f"✅ Coincidencia total. Aplicando configuración inicial a {fila['Device']}...")
+                    configure_device(
+                        port,
+                        9600,
+                        fila.get("Device","Router"),
+                        fila.get("User","cisco"),
+                        fila.get("Password","cisco"),
+                        fila.get("Ip-domain","cisco.local")
+                    )
                 else:
-                    print(f"⚠ No se pudo conectar al router {device}")
                     resultados.append({
-                        **row, "Modelo_detectado": "N/A", "Version_detectada": "N/A",
-                        "Modelo_coincide": "No", "Version_coincide": "No"
+                        **fila,
+                        "Modelo_detectado": modelo,
+                        "Version_detectada": version,
+                        "Serie_detectada": serial_detectado,
+                        "Modelo_coincide": "No",
+                        "Version_coincide": "No"
                     })
+                    print(f"⚠ Coincidencia parcial. No se aplica configuración.")
+            else:
+                print(f"❌ Serial {serial_detectado} no está en CSV. Se omite configuración.")
 
-        # Guardar resultados en un CSV
-        campos = list(lector.fieldnames) + ["Modelo_detectado", "Version_detectada", "Modelo_coincide", "Version_coincide"]
-        with open(ruta_resultados, mode="w", newline="", encoding="utf-8") as res_file:
-            escritor = csv.DictWriter(res_file, fieldnames=campos)
-            escritor.writeheader()
-            escritor.writerows(resultados)
+        finally:
+            ser.close()
 
-        print(f"\n✅ Resultados guardados en '{ruta_resultados}'")
-
-    except Exception as e:
-        print(f"❌ Error al procesar el CSV: {e}")
+    # Guardar resultados en CSV
+    if resultados:
+        campos = list(resultados[0].keys())
+        with open(ruta_resultados, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=campos)
+            writer.writeheader()
+            writer.writerows(resultados)
+        print(f"\n✅ Resultados guardados en {ruta_resultados}")
 
 # ==============================
-# Ejecutar script automáticamente
+# Ejecutar script
 # ==============================
 if __name__ == "__main__":
     procesar_csv("modelos.csv")

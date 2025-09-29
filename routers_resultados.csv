@@ -1,0 +1,2 @@
+Serie,Port,Device,User,Password,Ip-domain,Modelo,Version,Modelo_detectado,Version_detectada,Serie_detectada,Modelo_coincide,Version_coincide
+FJC2047A07M,COM11,Router1,cisco,cisco,cisco.local,,,C2900-UNIVERSALK9-M,Cisco,FJC2047A07M,No,No

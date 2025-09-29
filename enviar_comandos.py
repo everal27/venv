@@ -1,7 +1,28 @@
 import serial
+import serial.tools.list_ports
 import time
 
-def interactive_console(port, baudrate):
+def detectar_puerto():
+    """Detecta automáticamente el primer puerto serie disponible"""
+    puertos = list(serial.tools.list_ports.comports())
+
+    if not puertos:
+        print("❌ No se detectaron dispositivos conectados.")
+        return None
+
+    print("🔎 Puertos detectados:")
+    for i, p in enumerate(puertos):
+        print(f"{i+1}. {p.device} - {p.description}")
+
+    # Si hay más de un puerto, elegir el primero automáticamente
+    # (puedes modificar para pedir al usuario elegir)
+    return puertos[0].device  
+
+def interactive_console(baudrate=9600):
+    port = detectar_puerto()
+    if port is None:
+        return
+
     try:
         # Abrir puerto serial
         ser = serial.Serial(port, baudrate, timeout=1)
@@ -29,4 +50,4 @@ def interactive_console(port, baudrate):
         print(f"❌ Error al conectar: {e}")
 
 if __name__ == "__main__":
-    interactive_console("COM5", 9600) 
+    interactive_console(9600)
